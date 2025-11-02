@@ -1,18 +1,19 @@
 {
-  "name": "To‑Do Liste – PWA",
-  "short_name": "To‑Do",
+  "id": "/todo-pwa/",
+  "name": "To-Do Liste – PWA",
+  "short_name": "To-Do",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0b0d12",
   "theme_color": "#0b0d12",
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "icon-192-creative.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "icon-512-creative.png",
       "sizes": "512x512",
       "type": "image/png"
     }
