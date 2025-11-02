@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0d12"/>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>To‑Do Liste (PWA)</title>
+  <style>
+    :root{
+      --bg:#0b0d12; --card:#151a22; --ink:#e8ecf1; --muted:#a8b0bb; --accent:#52a5ff; --ok:#54d18b; --danger:#ff6b6b;
+      --ring:rgba(82,165,255,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",sans-serif;background:linear-gradient(180deg,#0b0d12,#0e1219 40%,#0b0d12);color:var(--ink)}
+    .wrap{max-width:720px;margin:40px auto;padding:24px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    h1{font-size:clamp(22px,3.5vw,30px);margin:0}
+    .card{background:var(--card);border:1px solid #1f2732;box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.03) inset;border-radius:16px}
+    .add{display:flex;gap:10px;padding:14px}
+    .add input[type=text]{flex:1;padding:12px 14px;border-radius:12px;border:1px solid #253042;background:#0f141c;color:var(--ink);outline:none}
+    .add input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 6px var(--ring)}
+    .add button{padding:12px 14px;border-radius:12px;border:1px solid #203147;background:var(--accent);color:#08121f;font-weight:600;cursor:pointer}
+    .hint{color:var(--muted);font-size:13px;margin:12px 6px 0}
+    ul#list{list-style:disc;padding:10px 22px 18px 34px;margin:0}
+    li.item{display:flex;align-items:center;gap:10px;padding:12px 10px;border-bottom:1px dashed #263142}
+    li.item:last-child{border-bottom:none}
+    .text{flex:1;cursor:pointer;user-select:none}
+    .text.done{opacity:.55;text-decoration:line-through}
+    .meta{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+    .pill{padding:4px 8px;border:1px solid #273247;border-radius:999px}
+    .actions{display:flex;gap:8px}
+    .btn{border:1px solid #263142;background:#111721;color:var(--ink);padding:8px 10px;border-radius:10px;cursor:pointer}
+    .btn:hover{border-color:#335171}
+    .del{border-color:#3b2530}
+    dialog{border:none;border-radius:16px;padding:0;background:var(--card);color:var(--ink);width:min(540px,92vw)}
+    dialog::backdrop{background:rgba(0,0,0,.6)}
+    .dlg-head{padding:14px 18px;border-bottom:1px solid #223046;font-weight:600}
+    .dlg-body{padding:18px;display:grid;gap:12px}
+    .row{display:flex;gap:10px;align-items:center}
+    .row input[type=number], .row select{padding:10px;border-radius:10px;border:1px solid #273247;background:#0f141c;color:var(--ink)}
+    .row input[type=number]{width:110px}
+    .mode{display:flex;gap:10px;flex-wrap:wrap}
+    .radio{border:1px solid #273247;border-radius:12px;padding:10px 12px;display:flex;gap:8px;align-items:center}
+    .dlg-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid #223046}
+    .install{display:none;margin-left:auto}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>To‑Do Liste</h1>
+      <button id="installBtn" class="btn install">App installieren</button>
+    </header>
+
+    <small class="hint">Klicke auf einen Eintrag zum Durchstreichen. Striche bleiben je nach Einstellung bestehen.</small>
+
+    <section class="card">
+      <form id="addForm" class="add" autocomplete="off">
+        <input id="newText" type="text" placeholder="Neuen Punkt hinzufügen…" required />
+        <button type="submit">Hinzufügen</button>
+      </form>
+      <ul id="list"></ul>
+    </section>
+  </div>
+
+  <dialog id="modeDialog">
+    <div class="dlg-head">Wie lange soll der Durchstrich bleiben?</div>
+    <form method="dialog" id="modeForm">
+      <div class="dlg-body">
+        <div class="mode">
+          <label class="radio"><input type="radio" name="mode" value="next-day" checked> Reset next day (Schweizer Zeit)</label>
+          <label class="radio"><input type="radio" name="mode" value="custom"> Benutzerdefiniert</label>
+        </div>
+        <div id="customRow" class="row" style="display:none">
+          <span>Dauer:</span>
+          <input type="number" id="amount" min="1" value="1" />
+          <select id="unit">
+            <option value="hours">hours</option>
+            <option value="days">days</option>
+          </select>
+        </div>
+        <div class="hint">Bei „Reset next day“ wird der Durchstrich am nächsten Tag (Zeitzone Europe/Zurich) automatisch entfernt. Bei „Benutzerdefiniert“ verfällt der Durchstrich nach der gewählten Zeitspanne.</div>
+      </div>
+      <div class="dlg-foot">
+        <button class="btn" value="cancel">Abbrechen</button>
+        <button class="btn" id="dlgOk" value="ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    // PWA: Service Worker registrieren
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch(console.error);
+      });
+    }
+    // PWA: „Installieren“-Button behandeln
+    let deferredPrompt = null;
+    const installBtn = document.getElementById('installBtn');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = 'inline-block';
+    });
+    installBtn?.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.style.display = 'none';
+    });
+
+    // ----- Zeitzone Europe/Zurich Hilfen -----
+    const Z_TZ = 'Europe/Zurich';
+    function currentDateStrZurich(){
+      try{
+        return new Intl.DateTimeFormat('en-CA',{timeZone:Z_TZ,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      }catch{
+        const d=new Date();
+        const y=d.getUTCFullYear(), m=String(d.getUTCMonth()+1).padStart(2,'0'), da=String(d.getUTCDate()).padStart(2,'0');
+        return `${y}-${m}-${da}`;
+      }
+    }
+
+    // ----- Datenhaltung -----
+    const STORE_KEY = 'todo-app-strike-v1';
+    /** Task: { id, text, completed:boolean, mode:null|'next-day'|'custom', completedOnDate?:'YYYY-MM-DD', expiresAt?:ms } */
+    let tasks = load();
+    function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(tasks)); }
+    function load(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY))||[] }catch{ return [] } }
+    function uid(){ return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4) }
+
+    // ----- Rendering -----
+    const listEl = document.getElementById('list');
+    function render(){
+      listEl.innerHTML='';
+      tasks.forEach(t=>{
+        const li=document.createElement('li');
+        li.className='item';
+
+        const span=document.createElement('span');
+        span.className='text'+(t.completed?' done':'');
+        span.textContent=t.text;
+        span.title='Zum (Ent)Durchstreichen klicken';
+        span.addEventListener('click',()=>toggleTask(t.id));
+
+        const meta=document.createElement('div');
+        meta.className='meta';
+        if(t.mode==='next-day' && t.completed){
+          const pill=document.createElement('span');
+          pill.className='pill';
+          pill.textContent='Reset next day';
+          meta.appendChild(pill);
+        } else if(t.mode==='custom' && t.completed){
+          const pill=document.createElement('span');
+          pill.className='pill';
+          const left = timeLeft(t.expiresAt);
+          pill.textContent = left>0?('Verfällt in '+fmtDuration(left)):'Abgelaufen';
+          meta.appendChild(pill);
+        }
+
+        const actions=document.createElement('div');
+        actions.className='actions';
+        const del=document.createElement('button');
+        del.className='btn del';
+        del.textContent='Löschen';
+        del.addEventListener('click',()=>removeTask(t.id));
+        actions.appendChild(del);
+
+        li.appendChild(span);
+        li.appendChild(meta);
+        li.appendChild(actions);
+        listEl.appendChild(li);
+      });
+    }
+
+    function fmtDuration(ms){
+      const s = Math.max(0, Math.floor(ms/1000));
+      const d = Math.floor(s/86400);
+      const h = Math.floor((s%86400)/3600);
+      const m = Math.floor((s%3600)/60);
+      if(d>0) return `${d} Tag${d===1?'':'e'} ${h} Std ${m} Min`;
+      if(h>0) return `${h} Std ${m} Min`;
+      return `${m} Min`;
+    }
+    function timeLeft(expiresAt){ return (expiresAt||0) - Date.now(); }
+
+    // ----- Aktionen -----
+    document.getElementById('addForm').addEventListener('submit', e=>{
+      e.preventDefault();
+      const input = document.getElementById('newText');
+      const text = input.value.trim();
+      if(!text) return;
+      tasks.push({id:uid(), text, completed:false, mode:null});
+      save(); render(); input.value=''; input.focus();
+    });
+
+    function removeTask(id){
+      tasks = tasks.filter(t=>t.id!==id); save(); render();
+    }
+
+    async function toggleTask(id){
+      const t = tasks.find(x=>x.id===id); if(!t) return;
+      if(t.completed){
+        t.completed=false; t.mode=null; delete t.completedOnDate; delete t.expiresAt; save(); render();
+        return;
+      }
+      openModeDialog().then(sel=>{
+        if(!sel) return;
+        t.completed = true;
+        t.mode = sel.mode;
+        if(sel.mode==='next-day'){
+          t.completedOnDate = currentDateStrZurich();
+          delete t.expiresAt;
+        }else{
+          const now = Date.now();
+          const amount = Math.max(1, parseInt(sel.amount||'1',10));
+          const factor = sel.unit==='days' ? 24*3600*1000 : 3600*1000;
+          t.expiresAt = now + amount * factor;
+          delete t.completedOnDate;
+        }
+        save(); render();
+      });
+    }
+
+    // ----- Dialogsteuerung -----
+    const dlg = document.getElementById('modeDialog');
+    const modeForm = document.getElementById('modeForm');
+    const customRow = document.getElementById('customRow');
+    modeForm.addEventListener('change', e=>{
+      const mode = new FormData(modeForm).get('mode');
+      customRow.style.display = mode==='custom' ? 'flex' : 'none';
+    });
+    function openModeDialog(){
+      return new Promise(res=>{
+        const amount = document.getElementById('amount');
+        const unit = document.getElementById('unit');
+        modeForm.reset();
+        customRow.style.display='none';
+        amount.value = '1'; unit.value='hours';
+        dlg.showModal();
+        function onClose(ev){
+          dlg.removeEventListener('close', onClose);
+          if(dlg.returnValue!=="ok"){ res(null); return; }
+          const fd = new FormData(modeForm);
+          const mode = fd.get('mode');
+          if(mode==='custom'){
+            res({mode:'custom', amount: amount.value, unit: unit.value});
+          }else{
+            res({mode:'next-day'});
+          }
+        }
+        dlg.addEventListener('close', onClose);
+      });
+    }
+
+    // ----- Ablauf & täglicher Reset prüfen -----
+    function sweep(){
+      const today = currentDateStrZurich();
+      let changed=false;
+      for(const t of tasks){
+        if(t.completed && t.mode==='custom' && t.expiresAt && Date.now()>=t.expiresAt){
+          t.completed=false; t.mode=null; delete t.expiresAt; changed=true;
+        }
+        if(t.completed && t.mode==='next-day' && t.completedOnDate && t.completedOnDate!==today){
+          t.completed=false; t.mode=null; delete t.completedOnDate; changed=true;
+        }
+      }
+      if(changed){ save(); render(); } else { render(); }
+    }
+    render();
+    sweep();
+    setInterval(sweep, 30*1000);
+  </script>
+</body>
+</html>
